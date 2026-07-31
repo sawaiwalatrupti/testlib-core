@@ -1,5 +1,14 @@
+# Python
 *.pyc
 __pycache__/
+
+# C build artefacts
+*.o
+*.a
+*.so
+*.out
+
+# Editor / OS
 .DS_Store
 *.swp
 *.swo

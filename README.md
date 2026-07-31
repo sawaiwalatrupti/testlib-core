@@ -1,27 +1,49 @@
-# bash-test-libs
+# testlib-core
 
-**Shared Bash and Python utilities for test automation projects.**
+**Shared test utility library for automation projects — Bash, Python, C, and beyond.**
 
-A centralized library of reusable helper functions and classes for test scripts, CI tools, and automation workflows.
+A centralised collection of reusable helpers, colour output utilities, result tracking,
+and OS detection functions. Designed to be cloned once and sourced/imported by any
+test automation project, keeping common logic in one place.
 
 ---
 
-## What's inside
+## Repository layout
 
-### Bash libraries (`bash/`)
+```
+testlib-core/
+├── bash/
+│   ├── colors.sh       — ANSI colour variables, auto-disabled in non-TTY
+│   ├── output.sh       — emit(), log(), warn(), error(), save_report()
+│   ├── results.sh      — result_pass/fail/warn/info + PASS/FAIL/WARN counters
+│   └── distro.sh       — detect_distro() → DISTRO_ID, DISTRO_NAME, PKG_MGR
+├── python/
+│   └── colors.py       — Colors class + Colors.strip_ansi()
+└── c/
+    └── testlib.h       — TL_ASSERT, TL_ASSERT_STR_EQ, TL_SUMMARY macros
+```
 
-| Module | What it provides |
-|---|---|
-| **`colors.sh`** | ANSI colour variables (`RED`, `GREEN`, `YELLOW`, `CYAN`, `BOLD`, `RESET`) — auto-disabled when stdout is not a TTY |
-| **`output.sh`** | `emit()` (print + store), `log()`, `warn()`, `error()`, `save_report()` |
-| **`results.sh`** | `result_pass()`, `result_fail()`, `result_warn()`, `result_info()` — increments `PASS`/`FAIL`/`WARN` counters |
-| **`distro.sh`** | `detect_distro()` — populates `DISTRO_ID`, `DISTRO_NAME`, `DISTRO_VERSION`, `PKG_MGR` |
+---
 
-### Python libraries (`python/`)
+## Installation
 
-| Module | What it provides |
-|---|---|
-| **`colors.py`** | `Colors` class for ANSI terminal colours, auto-detects TTY, `strip_ansi()` helper |
+Clone once alongside your projects:
+
+```bash
+cd ~/github-trupti/
+git clone https://github.com/sawaiwalatrupti/testlib-core.git
+```
+
+Recommended layout:
+
+```
+~/github-trupti/
+├── testlib-core/           ← shared library (this repo)
+├── distro-compat-checker/  ← sources ../testlib-core/bash/
+├── linux-log-parser/       ← sources ../testlib-core/bash/
+├── qa-automation-toolkit/  ← imports  ../testlib-core/python/
+└── your-next-project/      ← use any language module
+```
 
 ---
 
@@ -33,28 +55,24 @@ A centralized library of reusable helper functions and classes for test scripts,
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Adjust path to point to your local clone of bash-test-libs
-LIB_DIR="$(dirname "$0")/../../bash-test-libs/bash"
+LIB="$(dirname "$0")/../../testlib-core/bash"
 
-source "$LIB_DIR/colors.sh"
-source "$LIB_DIR/output.sh"
-source "$LIB_DIR/results.sh"
+source "$LIB/colors.sh"
+source "$LIB/output.sh"
+source "$LIB/results.sh"
+source "$LIB/distro.sh"   # optional — only if you need distro detection
 
 REPORT_LINES=()
 PASS=0; FAIL=0; WARN=0
 
-emit "${BOLD}Starting validation...${RESET}"
+detect_distro
+emit "${BOLD}Running on: $DISTRO_NAME $DISTRO_VERSION${RESET}"
 
-if [[ -f /etc/passwd ]]; then
-    result_pass "/etc/passwd exists"
-else
-    result_fail "/etc/passwd missing"
-fi
+[[ -f /etc/passwd ]] && result_pass "/etc/passwd exists" || result_fail "/etc/passwd missing"
 
 emit ""
-emit "${BOLD}Results: ${GREEN}PASS=$PASS${RESET}  ${RED}FAIL=$FAIL${RESET}${RESET}"
-
-[[ -n "${OUTPUT_FILE:-}" ]] && save_report "$OUTPUT_FILE"
+emit "Results: ${GREEN}PASS=$PASS${RESET}  ${RED}FAIL=$FAIL${RESET}"
+save_report "/tmp/my_report.txt"
 ```
 
 ### Python
@@ -64,77 +82,116 @@ emit "${BOLD}Results: ${GREEN}PASS=$PASS${RESET}  ${RED}FAIL=$FAIL${RESET}${RESE
 import sys
 from pathlib import Path
 
-# Adjust path to point to your local clone of bash-test-libs
-sys.path.insert(0, str(Path(__file__).parent.parent / "bash-test-libs" / "python"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "testlib-core" / "python"))
 
 from colors import Colors
 
-c = Colors()  # auto-detect TTY
-print(f"{c.GREEN}Tests passed{c.RESET}")
-print(f"{c.RED}Tests failed{c.RESET}")
-
-# Strip ANSI codes for file output
-plain_text = Colors.strip_ansi(f"{c.GREEN}OK{c.RESET}")
+c = Colors(enabled=sys.stdout.isatty())
+print(f"{c.GREEN}PASS{c.RESET} — test completed")
+plain = Colors.strip_ansi(f"{c.RED}FAIL{c.RESET}")  # for file output
 ```
 
----
+### C
 
-## Installation
+```c
+#include "../../testlib-core/c/testlib.h"
 
-Clone this repo alongside your test projects:
+int main(void) {
+    TL_INIT();
+    TL_ASSERT(2 + 2 == 4,      "basic arithmetic");
+    TL_ASSERT_STR_EQ("a", "a", "string equality");
+    TL_ASSERT_INT_EQ(42, 42,   "integer equality");
+    TL_SUMMARY();
+    return tl_fail_count > 0 ? 1 : 0;
+}
+```
 
+Compile and run:
 ```bash
-cd ~/github-trupti/
-git clone https://github.com/sawaiwalatrupti/bash-test-libs.git
-```
-
-Your projects should reference it with relative paths:
-
-```
-~/github-trupti/
-├── bash-test-libs/          ← shared library
-├── distro-compat-checker/   ← sources ../bash-test-libs/bash/...
-├── linux-log-parser/        ← sources ../bash-test-libs/bash/...
-└── qa-automation-toolkit/   ← imports  ../bash-test-libs/python/...
+gcc -o test_example test_example.c && ./test_example
 ```
 
 ---
 
-## Why a shared library?
+## Module reference
 
-1. **DRY principle** — write once, use in all projects
-2. **Single source of truth** — fix a bug in one place, all projects benefit
-3. **Consistency** — all scripts use the same colour codes, log format, and report structure
-4. **Easier maintenance** — update the library, projects automatically get improvements
-5. **Scalability** — add new utilities without touching every project
+### `bash/colors.sh`
+| Variable | Value (TTY) |
+|---|---|
+| `RED` | `\033[0;31m` |
+| `YELLOW` | `\033[0;33m` |
+| `GREEN` | `\033[0;32m` |
+| `CYAN` | `\033[0;36m` |
+| `BOLD` | `\033[1m` |
+| `RESET` | `\033[0m` |
+
+### `bash/output.sh`
+| Function | Description |
+|---|---|
+| `emit TEXT` | Print line and append to `REPORT_LINES[]` |
+| `log TEXT` | `[INFO]` prefix, stdout only |
+| `warn TEXT` | `[WARN]` prefix, stdout only |
+| `error TEXT` | `[ERROR]` prefix, stdout only |
+| `save_report FILE` | Write `REPORT_LINES[]` to FILE, ANSI stripped |
+
+### `bash/results.sh`
+| Function | Description |
+|---|---|
+| `result_pass TEXT` | Print `[PASS]`, increment `PASS` |
+| `result_fail TEXT` | Print `[FAIL]`, increment `FAIL` |
+| `result_warn TEXT` | Print `[WARN]`, increment `WARN` |
+| `result_info TEXT` | Print `[INFO]`, no counter |
+
+### `bash/distro.sh`
+| Variable set | Example |
+|---|---|
+| `DISTRO_ID` | `rhel`, `ubuntu`, `sles` |
+| `DISTRO_NAME` | `Red Hat Enterprise Linux` |
+| `DISTRO_VERSION` | `9.3`, `22.04` |
+| `PKG_MGR` | `rpm`, `dpkg`, `unknown` |
+
+### `python/colors.py`
+| Item | Description |
+|---|---|
+| `Colors(enabled)` | Class with `RED/YELLOW/GREEN/CYAN/BOLD/RESET` attributes |
+| `Colors.strip_ansi(text)` | Static method — removes all ANSI codes from string |
+
+### `c/testlib.h`
+| Macro | Description |
+|---|---|
+| `TL_INIT()` | Reset pass/fail counters |
+| `TL_ASSERT(expr, label)` | Assert expression is true |
+| `TL_ASSERT_STR_EQ(a, b, label)` | Assert two C strings are equal |
+| `TL_ASSERT_INT_EQ(a, b, label)` | Assert two integers are equal |
+| `TL_SUMMARY()` | Print final PASS/FAIL summary |
 
 ---
 
-## Projects using this library
+## Projects using testlib-core
 
-- [distro-compat-checker](https://github.com/sawaiwalatrupti/distro-compat-checker) — cross-distro package/service validation tool (Bash)
+- [distro-compat-checker](https://github.com/sawaiwalatrupti/distro-compat-checker) — cross-distro package/service validation (Bash)
 - [linux-log-parser](https://github.com/sawaiwalatrupti/linux-log-parser) — system log error scanner (Bash)
 - [qa-automation-toolkit](https://github.com/sawaiwalatrupti/qa-automation-toolkit) — JUnit XML result analyser (Python)
 
 ---
 
-## Requirements
+## Contributing
 
-- **Bash**: 4.0+
-- **Python**: 3.9+ (for Python modules)
-- No external dependencies
+When adding a new module:
+1. Place it in the correct language directory (`bash/`, `python/`, `c/`, etc.)
+2. Keep each file single-purpose with a clear header comment
+3. Document all public functions/macros in this README
+4. Validate: `shellcheck bash/*.sh` for Bash, `python3 -m py_compile` for Python, `gcc -fsyntax-only` for C
 
 ---
 
-## Contributing
+## Requirements
 
-When adding a new utility:
-
-1. Keep functions small and single-purpose
-2. Document parameters and behaviour in a comment header
-3. Use `shellcheck` for Bash code (`shellcheck bash/*.sh`)
-4. Use `mypy` for Python code (`mypy python/`)
-5. Test in both TTY and non-TTY environments
+| Language | Minimum version |
+|---|---|
+| Bash | 4.0+ |
+| Python | 3.9+ |
+| C | C99 (any gcc/clang) |
 
 ---
 
