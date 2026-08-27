@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: Shellcheck bash/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Lint bash modules
+        run: shellcheck bash/colors.sh bash/output.sh bash/results.sh bash/distro.sh
+
+  python-syntax:
+    name: Python syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check python/colors.py syntax
+        run: python3 -m py_compile python/colors.py && echo "Syntax OK"
+
+  c-compile:
+    name: C header compile check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile test against testlib.h
+        run: |
+          printf '#include "testlib.h"\nint main(void) { TL_INIT(); TL_SUMMARY(); return tl_fail_count > 0 ? 1 : 0; }\n' > /tmp/test_compile.c
+          gcc -I c/ /tmp/test_compile.c -o /tmp/test_compile
+          echo "Compile OK"
