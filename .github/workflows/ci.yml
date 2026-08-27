@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  shellcheck:
-    name: Shellcheck bash/
+  bash-shellcheck:
+    name: "🔍 Bash — Shellcheck Static Analysis"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,11 +16,72 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
-      - name: Lint bash modules
-        run: shellcheck bash/colors.sh bash/output.sh bash/results.sh bash/distro.sh
+      - name: "Run shellcheck on all bash modules"
+        run: |
+          echo "=================================================="
+          echo "  Running shellcheck on bash/"
+          echo "  Files: colors.sh  output.sh  results.sh  distro.sh"
+          echo "=================================================="
+          shellcheck bash/colors.sh bash/output.sh bash/results.sh bash/distro.sh
+          echo ""
+          echo "✅ All bash modules passed shellcheck"
 
-  python-syntax:
-    name: Python syntax check
+  bash-selftest:
+    name: "🧪 Bash — Self-test (colors, output, results, distro)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Run bash self-test — exercises all 4 modules"
+        run: |
+          echo "=================================================="
+          echo "  Running bash module self-test"
+          echo "  Tests: colors, emit/log/warn/error, pass/fail/warn counters, distro detection"
+          echo "=================================================="
+          bash -euo pipefail << 'SELFTEST'
+          LIB="$(pwd)/bash"
+          source "$LIB/colors.sh"
+          source "$LIB/output.sh"
+          source "$LIB/results.sh"
+          source "$LIB/distro.sh"
+
+          REPORT_LINES=()
+          PASS=0; FAIL=0; WARN=0
+
+          echo "-- Testing output functions --"
+          emit "  emit() works"
+          log  "log() works"
+          warn "warn() works"
+          error "error() works"
+
+          echo "-- Testing result counters --"
+          result_pass "counter increments on pass"
+          result_fail "counter increments on fail"
+          result_warn "counter increments on warn"
+          result_info "info line (no counter)"
+
+          [[ "$PASS" -eq 1 ]] || { echo "❌ PASS counter wrong: $PASS"; exit 1; }
+          [[ "$FAIL" -eq 1 ]] || { echo "❌ FAIL counter wrong: $FAIL"; exit 1; }
+          [[ "$WARN" -eq 1 ]] || { echo "❌ WARN counter wrong: $WARN"; exit 1; }
+          echo "  ✅ Counters: PASS=$PASS  FAIL=$FAIL  WARN=$WARN"
+
+          echo "-- Testing distro detection --"
+          detect_distro
+          [[ -n "$DISTRO_ID"   ]] || { echo "❌ DISTRO_ID empty";   exit 1; }
+          [[ -n "$DISTRO_NAME" ]] || { echo "❌ DISTRO_NAME empty"; exit 1; }
+          [[ -n "$PKG_MGR"     ]] || { echo "❌ PKG_MGR empty";     exit 1; }
+          echo "  ✅ Distro: $DISTRO_NAME $DISTRO_VERSION  pkg=$PKG_MGR"
+
+          echo "-- Testing save_report --"
+          save_report /tmp/testlib_report.txt
+          [[ -f /tmp/testlib_report.txt ]] || { echo "❌ Report file not created"; exit 1; }
+          echo "  ✅ save_report wrote $(wc -l < /tmp/testlib_report.txt) lines"
+          SELFTEST
+          echo ""
+          echo "✅ Bash self-test passed"
+
+  python-selftest:
+    name: "🧪 Python — Self-test (colors.py)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,17 +91,68 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Check python/colors.py syntax
-        run: python3 -m py_compile python/colors.py && echo "Syntax OK"
+      - name: "Run Python self-test — exercises Colors class"
+        run: |
+          echo "=================================================="
+          echo "  Running Python module self-test"
+          echo "  Tests: Colors enabled/disabled, strip_ansi()"
+          echo "=================================================="
+          python3 - << 'SELFTEST'
+          import sys
+          sys.path.insert(0, 'python')
+          from colors import Colors
+
+          # Test enabled colors
+          c = Colors(enabled=True)
+          assert c.RED    != '', "RED should be set when enabled"
+          assert c.RESET  != '', "RESET should be set when enabled"
+          print("  ✅ Colors(enabled=True)  — codes present")
+
+          # Test disabled colors
+          c2 = Colors(enabled=False)
+          assert c2.RED   == '', "RED should be empty when disabled"
+          assert c2.RESET == '', "RESET should be empty when disabled"
+          print("  ✅ Colors(enabled=False) — codes empty")
+
+          # Test strip_ansi
+          raw   = '\033[0;32mHello\033[0m World'
+          clean = Colors.strip_ansi(raw)
+          assert clean == 'Hello World', f"strip_ansi failed: '{clean}'"
+          print("  ✅ strip_ansi()          — ANSI codes removed correctly")
+
+          print()
+          print("✅ Python self-test passed")
+          SELFTEST
 
   c-compile:
-    name: C header compile check
+    name: "🧪 C — Compile and run testlib.h"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile test against testlib.h
+      - name: "Compile and run a real test program using testlib.h"
         run: |
-          printf '#include "testlib.h"\nint main(void) { TL_INIT(); TL_SUMMARY(); return tl_fail_count > 0 ? 1 : 0; }\n' > /tmp/test_compile.c
-          gcc -I c/ /tmp/test_compile.c -o /tmp/test_compile
-          echo "Compile OK"
+          echo "=================================================="
+          echo "  Compiling test program against c/testlib.h"
+          echo "  Tests: TL_ASSERT, TL_ASSERT_STR_EQ, TL_ASSERT_INT_EQ, TL_SUMMARY"
+          echo "=================================================="
+          cat > /tmp/test_testlib.c << 'EOF'
+          #include "testlib.h"
+          int main(void) {
+              TL_INIT();
+              TL_ASSERT(1 + 1 == 2,          "basic arithmetic");
+              TL_ASSERT(1 > 0,               "comparison operator");
+              TL_ASSERT_STR_EQ("foo", "foo", "string equality");
+              TL_ASSERT_INT_EQ(42,  42,      "integer equality");
+              TL_ASSERT_INT_EQ(0,    0,      "zero equality");
+              TL_SUMMARY();
+              return tl_fail_count > 0 ? 1 : 0;
+          }
+          EOF
+          gcc -I c/ /tmp/test_testlib.c -o /tmp/test_testlib
+          echo "  ✅ Compiled successfully"
+          echo ""
+          echo "-- Running test binary --"
+          /tmp/test_testlib
+          echo ""
+          echo "✅ C self-test passed"
