@@ -1,5 +1,7 @@
 # testlib-core
 
+![CI](https://github.com/sawaiwalatrupti/testlib-core/actions/workflows/ci.yml/badge.svg)
+
 **Shared test utility library for automation projects — Bash, Python, C, and beyond.**
 
 A centralised collection of reusable helpers, colour output utilities, result tracking,
@@ -160,10 +162,11 @@ gcc -o test_example test_example.c && ./test_example
 | Macro | Description |
 |---|---|
 | `TL_INIT()` | Reset pass/fail counters |
-| `TL_ASSERT(expr, label)` | Assert expression is true |
-| `TL_ASSERT_STR_EQ(a, b, label)` | Assert two C strings are equal |
+| `TL_ASSERT(expr, label)` | Assert any boolean expression is true |
+| `TL_ASSERT_STR_EQ(a, b, label)` | Assert two C strings are equal (`strcmp`) |
 | `TL_ASSERT_INT_EQ(a, b, label)` | Assert two integers are equal |
-| `TL_SUMMARY()` | Print final PASS/FAIL summary |
+| `TL_SUMMARY()` | Print final PASS/FAIL count summary |
+| `tl_fail_count` | Integer — use in `return tl_fail_count > 0 ? 1 : 0` |
 
 ---
 
